@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>HW2 TODO 清單</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif; font-size: 13px; color: #222; padding: 30px 40px; line-height: 1.6; }
+  h1 { font-size: 20px; text-align: center; margin-bottom: 4px; }
+  .subtitle { text-align: center; color: #555; font-size: 12px; margin-bottom: 24px; }
+  h2 { font-size: 15px; background: #2c3e50; color: white; padding: 6px 12px; margin: 20px 0 8px; border-radius: 4px; }
+  h3 { font-size: 13px; color: #2c3e50; border-left: 4px solid #2c3e50; padding-left: 8px; margin: 14px 0 6px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  th { background: #ecf0f1; padding: 6px 10px; text-align: left; border: 1px solid #ccc; font-size: 12px; }
+  td { padding: 6px 10px; border: 1px solid #ddd; vertical-align: top; font-size: 12px; }
+  tr:nth-child(even) td { background: #f9f9f9; }
+  .pts { color: #e74c3c; font-weight: bold; white-space: nowrap; }
+  .tag-write { background: #3498db; color: white; border-radius: 3px; padding: 1px 6px; font-size: 11px; }
+  .tag-code  { background: #27ae60; color: white; border-radius: 3px; padding: 1px 6px; font-size: 11px; }
+  .tag-bonus { background: #e67e22; color: white; border-radius: 3px; padding: 1px 6px; font-size: 11px; }
+  .file { font-family: Consolas, monospace; background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .cmd { font-family: Consolas, monospace; background: #2c3e50; color: #2ecc71; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: block; margin: 3px 0; }
+  .formula { font-style: italic; color: #555; }
+  .summary { display: flex; gap: 16px; margin: 20px 0; }
+  .box { flex: 1; border: 2px solid #2c3e50; border-radius: 6px; padding: 12px; text-align: center; }
+  .box .num { font-size: 28px; font-weight: bold; color: #2c3e50; }
+  .box .label { font-size: 12px; color: #666; }
+  .checklist td:first-child { width: 28px; text-align: center; font-size: 16px; }
+  @media print {
+    body { padding: 15px 20px; }
+    h2 { break-before: avoid; }
+    table { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>HW2：運動學模型與路徑追蹤控制 — TODO 清單</h1>
+<div class="subtitle">清華大學資工系 胡敏君教授 ｜ 截止日期：2026/03/29 23:59</div>
+
+<!-- Summary -->
+<div class="summary">
+  <div class="box">
+    <div class="num">11</div>
+    <div class="label">💻 程式題</div>
+  </div>
+  <div class="box">
+    <div class="num">10</div>
+    <div class="label">✏️ 撰寫題</div>
+  </div>
+  <div class="box">
+    <div class="num" style="color:#e74c3c">100</div>
+    <div class="label">總分（+10 加分）</div>
+  </div>
+</div>
+
+<!-- ====== 程式題 ====== -->
+<h2>💻 程式題</h2>
+
+<h3>第 2 章：運動學模型</h3>
+<table class="checklist">
+  <tr><th></th><th>題號</th><th>分數</th><th>檔案</th><th>實作內容</th><th>測試指令</th></tr>
+  <tr>
+    <td>□</td><td>2.2.2</td><td class="pts">4 pts</td>
+    <td><span class="file">navigation.py L81</span></td>
+    <td>差速驅動：將 <code>[v, w]</code> 映射為 <code>[lw, rw]</code><br>
+      <span class="formula">lw = (v − ω·l) / r，rw = (v + ω·l) / r</span>
+    </td>
+    <td><span class="cmd">python navigation.py -s diff_drive -c pid -t 400mRunningTrack</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>2.3.1</td><td class="pts">5 pts</td>
+    <td><span class="file">Simulation/kinematic_bicycle.py L19</span></td>
+    <td>自行車模型 <code>step()</code> 狀態更新<br>
+      <span class="formula">ẋ = v·cosθ, ẏ = v·sinθ, θ̇ = v/L·tanδ</span>
+    </td>
+    <td><span class="cmd">python navigation.py -s bicycle -c pid</span></td>
+  </tr>
+</table>
+
+<h3>第 3 章：縱向控制</h3>
+<table class="checklist">
+  <tr><th></th><th>題號</th><th>分數</th><th>檔案</th><th>實作內容</th><th>測試指令</th></tr>
+  <tr>
+    <td>□</td><td>3.1.b</td><td class="pts">4 pts</td>
+    <td><span class="file">trajectory_generator.py L62</span></td>
+    <td>曲率限速<br>
+      <span class="formula">v_limit = min(v_max, √(a_lat / (|κ| + ε)))</span>
+    </td>
+    <td rowspan="2"><span class="cmd">python trajectory_generator.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>3.1.c</td><td class="pts">8 pts</td>
+    <td><span class="file">trajectory_generator.py L66</span></td>
+    <td>縱向平滑（前向限加速 + 後向限減速）<br>
+      起點 v[0]=5，終點 v[-1]=0
+    </td>
+  </tr>
+  <tr>
+    <td>□</td><td>3.2</td><td class="pts">8 pts</td>
+    <td><span class="file">PathTracking/long_controller_pid.py L48</span></td>
+    <td>縱向 PID：e = v_ref − v，輸出加速度 a</td>
+    <td><span class="cmd">python navigation.py -s bicycle -c pid -t 1000mStraight</span></td>
+  </tr>
+</table>
+
+<h3>第 4 章：橫向控制</h3>
+<table class="checklist">
+  <tr><th></th><th>題號</th><th>分數</th><th>檔案</th><th>實作內容</th><th>測試指令</th></tr>
+  <tr>
+    <td>□</td><td>4.1.2</td><td class="pts">5 pts</td>
+    <td><span class="file">PathTracking/controller_pid_basic.py L10</span></td>
+    <td>調整 Basic 模型 PID 增益 Kp, Ki, Kd</td>
+    <td><span class="cmd">python navigation.py -s basic -c pid -t 1000mStraight --init_shift 1.5</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.1.3</td><td class="pts">5 pts</td>
+    <td><span class="file">PathTracking/controller_pid_bicycle.py L46</span></td>
+    <td>自行車 PID 橫向控制（輸出轉向角 δ）</td>
+    <td><span class="cmd">python navigation.py -s bicycle -c pid -t 400mRunningTrack</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.2.1</td><td class="pts">8 pts</td>
+    <td><span class="file">PathTracking/controller_pure_pursuit_bicycle.py L42</span></td>
+    <td>Pure Pursuit：找前視點，計算 δ<br>
+      <span class="formula">Ld = kp·v + Lfc，δ = arctan(2L·sin(α) / Ld)</span>
+    </td>
+    <td><span class="cmd">python navigation.py -s bicycle -c pure_pursuit -t 400mRunningTrack</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.3.1</td><td class="pts">8 pts</td>
+    <td><span class="file">PathTracking/controller_stanley_bicycle.py L44</span></td>
+    <td>Stanley：前輪位置對齊路徑<br>
+      <span class="formula">δ = θ_e + arctan(−k·e / v_f)</span>
+    </td>
+    <td><span class="cmd">python navigation.py -s bicycle -c stanley -t 400mRunningTrack</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.4.1</td><td class="pts">8 pts</td>
+    <td><span class="file">PathTracking/controller_lqr_bicycle.py L72</span></td>
+    <td>LQR（控制輸入 = δ）<br>
+      state x = [e, θ_e]，建構 A、B，解 DARE，計算 K
+    </td>
+    <td><span class="cmd">python navigation.py -s bicycle -c lqr -t 400mRunningTrack --lqr_control_state steering_angle</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.4.4</td><td class="pts">6 pts</td>
+    <td><span class="file">PathTracking/controller_lqr_bicycle.py L76</span></td>
+    <td>LQR（控制輸入 = δ̇）<br>
+      state x = [e, θ_e, δ]，擴充 A、B 矩陣
+    </td>
+    <td><span class="cmd">python navigation.py -s bicycle -c lqr -t 400mRunningTrack --lqr_control_state steering_angular_velocity</span></td>
+  </tr>
+</table>
+
+<h3>第 5 章：F1 賽道挑戰</h3>
+<table class="checklist">
+  <tr><th></th><th>題號</th><th>分數</th><th colspan="3">內容</th></tr>
+  <tr>
+    <td>□</td><td>5.1</td><td class="pts">10 pts</td>
+    <td colspan="3">
+      在 Silverstone、Suzuka、Monza 跑出最佳成績（附截圖）<br>
+      基準時間：Silverstone 107s ｜ Suzuka 115s ｜ Monza 94s<br>
+      ⚠️ 追蹤誤差比完成時間罰分更重，優先追求精準度
+      <span class="cmd">python navigation.py -s [model] -c [controller] -t [Silverstone|Suzuka|Monza]</span>
+    </td>
+  </tr>
+</table>
+
+<!-- ====== 撰寫題 ====== -->
+<h2>✏️ 撰寫題</h2>
+
+<h3>第 2 章：運動學模型</h3>
+<table class="checklist">
+  <tr><th></th><th>題號</th><th>分數</th><th>問題</th><th>參考檔案</th></tr>
+  <tr>
+    <td>□</td><td>2.1.1(a)</td><td class="pts">2 pts</td>
+    <td><code>yaw</code> 的單位是什麼？</td>
+    <td><span class="file">Simulation/kinematic_basic.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>2.1.1(b)</td><td class="pts">2 pts</td>
+    <td>為什麼需要 <code>% 360</code>？少了這行會怎樣？</td>
+    <td><span class="file">Simulation/kinematic_basic.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>2.1.2</td><td class="pts">2 pts</td>
+    <td>列出 simulator_basic.py 中所有的約束條件</td>
+    <td><span class="file">Simulation/simulator_basic.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>2.2.1</td><td class="pts">2 pts</td>
+    <td>列出 simulator_differential_drive.py 中所有的約束條件</td>
+    <td><span class="file">Simulation/simulator_differential_drive.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>2.3.2</td><td class="pts">3 pts</td>
+    <td>列出 simulator_bicycle.py 中所有的約束條件</td>
+    <td><span class="file">Simulation/simulator_bicycle.py</span></td>
+  </tr>
+</table>
+
+<h3>第 4 章：橫向控制</h3>
+<table class="checklist">
+  <tr><th></th><th>題號</th><th>分數</th><th>問題</th><th>參考檔案</th></tr>
+  <tr>
+    <td>□</td><td>4.1.1</td><td class="pts">2 pts</td>
+    <td>從圖中指出 PID 橫向控制的誤差項（選 1~5）</td>
+    <td><span class="file">PathTracking/controller_pid_basic.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.1.2</td><td class="pts">5 pts</td>
+    <td>說明如何調整 PID 增益 Kp, Ki, Kd（附截圖）</td>
+    <td><span class="file">PathTracking/controller_pid_basic.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.1.3</td><td class="pts">5 pts</td>
+    <td>若改變誤差定義，說明你使用的誤差</td>
+    <td><span class="file">PathTracking/controller_pid_bicycle.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.4.2</td><td class="pts">4 pts</td>
+    <td>說明如何選擇 LQR 的權重矩陣 Q 和 R</td>
+    <td><span class="file">PathTracking/controller_lqr_bicycle.py</span></td>
+  </tr>
+  <tr>
+    <td>□</td><td>4.4.3</td><td class="pts">4 pts</td>
+    <td>推導並填寫以 δ̇ 為控制輸入的線性系統矩陣 A、B</td>
+    <td>—</td>
+  </tr>
+</table>
+
+<h3>第 5 章 / 第 6 章（加分）</h3>
+<table class="checklist">
+  <tr><th></th><th>題號</th><th>分數</th><th>問題</th></tr>
+  <tr>
+    <td>□</td><td>5.1</td><td class="pts">10 pts</td>
+    <td>寫下 F1 挑戰使用的指令並附截圖</td>
+  </tr>
+  <tr>
+    <td>□</td><td>5.2</td><td class="pts">+5 pts</td>
+    <td>說明改進做法（加分題）</td>
+  </tr>
+  <tr>
+    <td>□</td><td>6.1</td><td class="pts">+5 pts</td>
+    <td>對作業的想法與建議（選填加分）</td>
+  </tr>
+</table>
+
+<br>
+<p style="text-align:center; color:#888; font-size:11px;">
+  列印提示：瀏覽器 → 列印（Ctrl+P）→ 另存為 PDF
+</p>
+
+</body>
+</html>
