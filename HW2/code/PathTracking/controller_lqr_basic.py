@@ -53,5 +53,26 @@ class ControllerLQRBasic(Controller):
         
         # Optional TODO: LQR Control for Basic Kinematic Model
         # You can implement this if you want to use LQR for basic kinematic model in F1 Challenge
-        next_w = 0
+        # Compute heading and cross-track errors
+        target_yaw_rad = np.deg2rad(target[2])
+        yaw_rad = np.deg2rad(yaw)
+        theta_e = (target_yaw_rad - yaw_rad + np.pi) % (2 * np.pi) - np.pi
+
+        theta_target = np.arctan2(target[1] - y, target[0] - x)
+        theta_err = theta_target - yaw_rad
+        e = min_dist * np.sin(theta_err)
+
+        # Linearized unicycle: state=[e, theta_e], control=w (rad/s)
+        v_safe = max(abs(v), 0.1)
+        A = np.array([[1.0, v_safe * self.dt],
+                      [0.0, 1.0]])
+        B = np.array([[0.0],
+                      [-self.dt]])
+
+        P = self._solve_DARE(A, B, self.Q, self.R)
+        K = np.linalg.inv(self.R + B.T @ P @ B) @ B.T @ P @ A
+
+        x_state = np.array([e, theta_e])
+        u = -(K @ x_state)[0]  # rad/s
+        next_w = np.rad2deg(u)
         return next_w

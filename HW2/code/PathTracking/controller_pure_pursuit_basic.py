@@ -37,6 +37,19 @@ class ControllerPurePursuitBasic(Controller):
 
         # Optional TODO: Pure Pursuit Control for Basic Kinematic Model
         # You can implement this if you want to use Pure Pursuit for basic kinematic model in F1 Challenge
-        next_w = 0
+        # Search for lookahead target point at distance Ld
+        target_idx = min_idx
+        for i in range(min_idx, len(self.path)):
+            dist = np.sqrt((self.path[i, 0] - x)**2 + (self.path[i, 1] - y)**2)
+            if dist >= Ld:
+                target_idx = i
+                break
+        target = self.path[target_idx]
+
+        # Angle from heading to lookahead point
+        alpha = np.arctan2(target[1] - y, target[0] - x) - np.deg2rad(yaw)
+        alpha = (alpha + np.pi) % (2 * np.pi) - np.pi  # normalize to [-pi, pi]
+
+        next_w = np.rad2deg(2.0 * v * np.sin(alpha) / Ld)
         
         return next_w

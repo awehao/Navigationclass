@@ -17,11 +17,21 @@ class KinematicModelBicycle(KinematicModel):
     def step(self, state:State, cstate:ControlState) -> State:
         # TODO 2.3.1: Bicycle Kinematic Model
         x, y, yaw = state.x, state.y, state.yaw
+
+        # 速度更新：v(t+dt) = v(t) + a*dt（一階積分）
         v = state.v + cstate.a * self.dt
+
+        # 位置更新：後輪為參考點，沿車頭方向移動
         x = x + v * np.cos(np.deg2rad(yaw)) * self.dt
         y = y + v * np.sin(np.deg2rad(yaw)) * self.dt
+
+        # 角速度：由自行車幾何關係推導
+        # w = v/l * tan(delta)，其中 l 為軸距，delta 為前輪轉向角
         w = np.rad2deg(v / self.l * np.tan(np.deg2rad(cstate.delta)))
+
+        # 航向角更新（限制在 [0, 360) 範圍內）
         yaw = (yaw + w * self.dt) % 360
         # [end] TODO 2.3.1
+
         state_next = State(x, y, yaw, v, w)
         return state_next

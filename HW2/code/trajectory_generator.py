@@ -59,22 +59,28 @@ def generate_speed_profile(path_x, path_y, max_v=20.0, max_lat_acc=2.0, max_long
     curvature = np.clip(curvature, 0, 10.0)
 
     # TODO 3.1.b Speed limit from curvature
-    eps = 1e-6
+    # 由最大側向加速度限制推導速度上限：a_lat = v^2 * k  =>  v_max = sqrt(a_lat / k)
+    # 與全局速度上限 max_v 取最小值，確保不超速
+    eps = 1e-6  # 避免曲率為 0 時除以零
     v_ref = np.minimum(max_v, np.sqrt(max_lat_acc / (curvature + eps)))
     # [end] TODO 3.1.b
 
     # TODO 3.1.c Longitudinal Smoothing
-    # 起點速度限制
+    # 以運動學限制對速度剖面進行前向與後向平滑，確保加減速不超過物理極限
+
+    # 起點速度限制（從靜止緩慢出發）
     v_ref[0] = 5.0
 
-    # 前向傳遞：限制加速度（ds[i-1] = 第 i-1 到 i 點的距離）
+    # 前向傳遞：限制加速度（v[i] <= sqrt(v[i-1]^2 + 2*a_max*ds)）
+    # 確保每段距離內加速不超過 max_long_acc
     for i in range(1, len(v_ref)):
         v_ref[i] = min(v_ref[i], np.sqrt(v_ref[i-1]**2 + 2 * max_long_acc * ds[i-1]))
 
-    # 終點速度限制
+    # 終點速度強制為 0（終點前必須完全停下）
     v_ref[-1] = 0.0
 
-    # 後向傳遞：限制減速度（ds[i] = 第 i 到 i+1 點的距離）
+    # 後向傳遞：限制減速度（v[i] <= sqrt(v[i+1]^2 + 2*a_dec*ds)）
+    # 確保每段距離內減速不超過 max_long_dec（從終點往起點回推）
     for i in range(len(v_ref) - 2, -1, -1):
         v_ref[i] = min(v_ref[i], np.sqrt(v_ref[i+1]**2 + 2 * max_long_dec * ds[i]))
     # [end] TODO 3.1.c

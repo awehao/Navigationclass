@@ -78,11 +78,14 @@ def navigation(args, simulator, controller, planner, start_pose=(100,200,0)):
                 next_v, target = long_controller.feedback(info)
                 next_w = controller.feedback(info)
                 # TODO 2.2.2: Map [v, w] to [lw, rw]
-                r = simulator.model.r
-                l = simulator.model.l
-                next_w_rad = np.deg2rad(next_w)
-                next_rw = np.rad2deg((next_v + l * next_w_rad) / r)
-                next_lw = np.rad2deg((next_v - l * next_w_rad) / r)
+                # 差速驅動運動學：由線速度 v 和角速度 w 推算左右輪轉速
+                # 公式推導：v = r*(lw+rw)/2，w = r*(rw-lw)/l
+                # 解方程得：rw = (v + l/2 * w) / r，lw = (v - l/2 * w) / r
+                r = simulator.model.r   # 車輪半徑
+                l = simulator.model.l   # 兩輪間距（wheelbase）
+                next_w_rad = np.deg2rad(next_w)  # 角速度轉為 rad/s
+                next_rw = np.rad2deg((next_v + l * next_w_rad) / r)  # 右輪轉速（deg/s）
+                next_lw = np.rad2deg((next_v - l * next_w_rad) / r)  # 左輪轉速（deg/s）
                 # [end] TODO 2.2.2
                 command = ControlState("diff_drive", next_lw, next_rw)
             elif args.simulator == "bicycle":
