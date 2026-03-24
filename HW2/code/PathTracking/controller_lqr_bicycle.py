@@ -15,9 +15,9 @@ class ControllerLQRBicycle(Controller):
             # R 矩陣：控制代價（越大代表越保守，轉向幅度越小）
             # 調參原則：Q[1,1] >> Q[0,0] → 優先修正航向（航向誤差不矯正，CTE 會持續增大）
             #           R 小 → 允許更大轉向，追蹤更積極；R 大 → 轉向平滑但慢
-            self.Q[0,0] = 2.0    # 橫向誤差 e 的懲罰權重
-            self.Q[1,1] = 2.0   # 航向誤差 theta_e 的懲罰權重（設大使控制器優先對齊路徑方向）
-            self.R[0,0] = 5    # 控制輸入（轉向角 delta）的懲罰權重（設小允許更積極轉向）
+            self.Q[0,0] = 1.0    # 橫向誤差 e 的懲罰權重
+            self.Q[1,1] = 10.0   # 航向誤差 theta_e 的懲罰權重（設大使控制器優先對齊路徑方向）
+            self.R[0,0] = 0.1    # 控制輸入（轉向角 delta）的懲罰權重（設小允許更積極轉向）
         elif control_state == 'steering_angular_velocity':
             self.Q = np.eye(3)
             self.R = np.eye(1)
@@ -66,14 +66,18 @@ class ControllerLQRBicycle(Controller):
         yaw = utils.angle_norm(yaw)
 
         # Check if reached end of track
+       # Check if reached end of track
         if self.current_idx >= len(self.path) - 3:
             return 0.0
 
-        # Search Nesrest Target
-        min_idx, min_dist = utils.search_nearest(self.path, (x,y))
-        target = self.path[min_idx]
-        target[2] = utils.angle_norm(target[2])
+        # 只在目前索引附近往前找，避免封閉路徑抓到後面的點
+        min_idx, min_dist = utils.search_nearest_local(
+        self.path, (x, y), self.current_idx, lookahead=50
+        )
+        self.current_idx = min_idx
 
+        target = self.path[min_idx].copy()
+        target[2] = utils.angle_norm(target[2])
         if self.control_state == 'steering_angle':
             # TODO 4.4.1: LQR Control for Bicycle Kinematic Model with steering angle as control input
             # 將角度轉為弧度進行計算
@@ -87,12 +91,15 @@ class ControllerLQRBicycle(Controller):
             e = -(x - target[0]) * np.sin(target_yaw_rad) + (y - target[1]) * np.cos(target_yaw_rad)
 
             # 線性化自行車模型（狀態 = [e, theta_e]，控制 = delta）
-            # 來自連續模型離散化：e' = e + v*theta_e*dt，theta_e' = theta_e + (v/l)*delta*dt
+            # 注意：此處 theta_e = path_yaw - vehicle_yaw，符號與標準定義相反
+            # 正確離散化：
+            #   e[k+1]       = e[k] - v*theta_e*dt   （theta_e>0 → 車頭偏右 → e 減少）
+            #   theta_e[k+1] = theta_e[k] - v/l*delta*dt （delta>0 → vehicle_yaw 增加 → theta_e 減少）
             v_safe = max(abs(v), 0.1)
-            A = np.array([[1.0, v_safe * self.dt],
+            A = np.array([[1.0, -v_safe * self.dt],
                           [0.0, 1.0]])
             B = np.array([[0.0],
-                          [v_safe * self.dt / self.l]])
+                          [-v_safe * self.dt / self.l]])
 
             # 解 DARE 得 P，再算最優增益 K = (R + B'PB)^-1 * B'PA
             P = self._solve_DARE(A, B, self.Q, self.R)
@@ -120,10 +127,11 @@ class ControllerLQRBicycle(Controller):
 
             # 擴展狀態空間（狀態 = [e, theta_e, delta]，控制 = delta_dot）
             # 比 4.4.1 多了 delta 狀態，讓控制器考慮轉向角的平滑性
+            # 符號與 4.4.1 相同（theta_e = path_yaw - vehicle_yaw，負號）
             v_safe = max(abs(v), 0.1)
-            A = np.array([[1.0, v_safe * self.dt, 0.0],
-                          [0.0, 1.0,              v_safe * self.dt / self.l],
-                          [0.0, 0.0,              1.0]])
+            A = np.array([[1.0, -v_safe * self.dt, 0.0],
+                          [0.0, 1.0,              -v_safe * self.dt / self.l],
+                          [0.0, 0.0,               1.0]])
             B = np.array([[0.0],
                           [0.0],
                           [self.dt]])
@@ -137,6 +145,7 @@ class ControllerLQRBicycle(Controller):
 
             # 將 delta_dot 積分得到新的轉向角
             next_delta = np.rad2deg(delta_rad + delta_dot * self.dt)
+            next_delta = np.clip(next_delta, -30, 30)  # 限制 ±30度
             # [end] TODO 4.4.4
 
         return next_delta
