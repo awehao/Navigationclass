@@ -23,10 +23,13 @@ class ControllerLQRBicycle(Controller):
             self.R = np.eye(1)
             # TODO 4.4.4: Tune LQR Gains
             # 狀態多了 delta（當前轉向角），控制輸入改為 delta_dot（轉向角速度）
+            # steering_angular_velocity 比 steering_angle 多一階積分延遲：
+            #   delta_dot → delta → yaw → 位置
+            # 因此需要更積極的增益（R 要小、Q[1,1] 要大）才能補償延遲
             self.Q[0,0] = 1.0    # 橫向誤差 e 的懲罰權重
-            self.Q[1,1] = 10.0   # 航向誤差 theta_e 的懲罰權重
-            self.Q[2,2] = 1.0    # 轉向角 delta 的懲罰權重（避免過大的轉向角）
-            self.R[0,0] = 1    # 控制輸入（delta_dot）的懲罰權重
+            self.Q[1,1] = 10.0   # 航向誤差 theta_e 的懲罰權重（大 → 彎道提早對齊航向）
+            self.Q[2,2] = 0.1    # 轉向角 delta 的懲罰權重（小 → 允許較大的轉向角過彎）
+            self.R[0,0] = 0.1    # 控制輸入（delta_dot）的懲罰權重（小 → 允許更快速的轉向變化）
         self.pe = 0
         self.pth_e = 0
         self.pdelta = 0
@@ -65,8 +68,7 @@ class ControllerLQRBicycle(Controller):
         x, y, yaw, delta, v = info["x"], info["y"], info["yaw"], info["delta"], info["v"]
         yaw = utils.angle_norm(yaw)
 
-        # Check if reached end of track
-       # Check if reached end of track
+        # Check if reached end of tracK
         if self.current_idx >= len(self.path) - 3:
             return 0.0
 
