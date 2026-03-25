@@ -266,6 +266,17 @@ def main():
     cv2.namedWindow("Compare", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Compare", 1300, 400)
 
+    # 倒數 5 秒
+    for cnt in range(5, 0, -1):
+        mm     = draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400)
+        legend = draw_legend_panel(agents, ctrl_names, panel_w=320, panel_h=400)
+        bar    = draw_bar_panel(agents, ctrl_names, panel_w=280, panel_h=400)
+        view   = np.hstack((mm, legend, bar))
+        cv2.putText(view, str(cnt), (view.shape[1]//2 - 30, view.shape[0]//2 + 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 3.0, (255, 255, 255), 6)
+        cv2.imshow("Compare", view)
+        cv2.waitKey(1000)
+
     while True:
         # 所有 agent 同步步進
         for a in agents:
