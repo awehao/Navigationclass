@@ -32,7 +32,7 @@ class ControllerSTABicycle(Controller):
     """
     def __init__(self, model,
                  lambda_=0.5,  # 滑動面斜率（與 SMC 一致，使 s 有足夠大小讓 tanh 有效）
-                 alpha=0.03,   # 積分增益（慢速累積，避免 u1 超調）
+                 alpha=0.15,   # 積分增益（加快累積速度，約 0.65s 可達 0.1 rad 修正量）
                  beta=0.3,     # tanh 增益（與 SMC 的 k 相同，已驗證可行）
                  phi=0.3):     # tanh 邊界層（與 SMC 相同，控制切換平滑度）
         self.path = None
