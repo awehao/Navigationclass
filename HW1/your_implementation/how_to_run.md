@@ -15,10 +15,10 @@ python3 main.py -p <規劃器> -m <地圖>
 
 ```bash
 # A*，地圖1
-python3 main.py -p a_star -m map1
+python main.py -p a_star -m map1
 
 # RRT*，地圖2
-python3 main.py -p rrt_star -m map2
+python main.py -p rrt_star -m map2
 ```
 
 ## 注意事項
