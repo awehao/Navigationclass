@@ -1,12 +1,3 @@
-"""
-compare.py - 同時跑最多 5 個控制器並排比較
-用法：python compare.py -t 400mRunningTrack -c smc sta pid pure_pursuit stanley
-      python compare.py -t Silverstone -c smc sta
-      python compare.py -t 400mRunningTrack -c lqr_sa lqr_sav smc
-控制器名稱：pid, pure_pursuit, stanley, lqr_sa, lqr_sav, smc, sta
-  lqr_sa  = LQR (steering_angle)
-  lqr_sav = LQR (steering_angular_velocity)
-"""
 import argparse
 import numpy as np
 import cv2
@@ -109,7 +100,7 @@ def build_agent(ctrl_name, way_points):
     lc.set_path(way_points)
     return {"sim": sim, "ctrl": ctrl, "lc": lc,
             "cmd": ControlState("bicycle", None, None),
-            "traj": [], "cte_hist": [], "finished": False}
+            "traj": [], "cte_hist": [], "finished": False, "ticks": 0}
 
 def reset_agent(agent, way_points, start_pose):
     agent["sim"].init_pose(start_pose)
@@ -119,6 +110,7 @@ def reset_agent(agent, way_points, start_pose):
     agent["traj"].clear()
     agent["cte_hist"].clear()
     agent["finished"] = False
+    agent["ticks"] = 0
 
 # ──────────────────────────────────────────────
 # 單步執行
@@ -134,6 +126,7 @@ def step_agent(agent):
     next_delta = ctrl.feedback(info)
     agent["cmd"] = ControlState("bicycle", next_a, next_delta)
     agent["traj"].append((s.x, s.y))
+    agent["ticks"] += 1
 
 def nearest_cte(path, x, y):
     # 找最近路徑點索引（與 navigation.py 相同：路徑座標已是公尺，不需換算）
@@ -182,12 +175,16 @@ def draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400):
         if traj:
             cv2.circle(mm, w2m(*traj[-1]), 6, color, -1)
 
-    # 圖例
+    # 圖例：名稱 | Avg CTE | 即時速度 | 已跑時間
+    dt = agents[0]["sim"].model.dt if agents else 0.05
     for i, (name, agent) in enumerate(zip(ctrl_names, agents)):
-        avg = np.mean(agent["cte_hist"]) if agent["cte_hist"] else 0.0
+        avg   = np.mean(agent["cte_hist"]) if agent["cte_hist"] else 0.0
+        v     = agent["sim"].state.v
+        t     = agent["ticks"] * dt
         suffix = " [DONE]" if agent["finished"] else ""
-        cv2.putText(mm, f"{name}: {avg:.2f}m{suffix}", (8, 18 + i*18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, COLOR[name], 1)
+        label = f"{name}: {avg:.2f}m  {v:.1f}m/s  {t:.0f}s{suffix}"
+        cv2.putText(mm, label, (8, 18 + i*18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR[name], 1)
 
     cv2.putText(mm, "r:reset  ESC:quit", (8, mm_h-8),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120,120,120), 1)
