@@ -141,7 +141,7 @@ def navigation(args, simulator, controller, planner, start_pose=(100,200,0)):
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--simulator", type=str, default="basic", choices=['basic', 'diff_drive', 'bicycle'], help="basic/diff_drive/bicycle")
-    parser.add_argument("-c", "--controller", type=str, default="pid", choices=['pid', 'pure_pursuit', 'stanley', 'lqr'], help="pid/pure_pursuit/stanley/lqr")
+    parser.add_argument("-c", "--controller", type=str, default="pid", choices=['pid', 'pure_pursuit', 'stanley', 'lqr', 'smc', 'sta'], help="pid/pure_pursuit/stanley/lqr/smc/sta")
     parser.add_argument("-t", "--track", type=str, default="1000mStraight", choices=['400mRunningTrack', '1000mStraight', 'Silverstone', 'Suzuka', 'Monza'], help="Name of track to load")
     parser.add_argument("-lcs", "--lqr_control_state", type=str, default="steering_angle", choices=['steering_angle', 'steering_angular_velocity'], help="control state of LQR control of bicycle model")
     parser.add_argument("-is", "--init_shift", type=float, default=0.0, help="init location shift")
@@ -163,6 +163,12 @@ def setup_simulator_and_controller(args):
             elif args.controller == "lqr":
                 from PathTracking.controller_lqr_basic import ControllerLQRBasic as Controller
                 controller = Controller(model=simulator.model)
+            elif args.controller == "smc":
+                from PathTracking.controller_smc_basic import ControllerSMCBasic as Controller
+                controller = Controller(model=simulator.model)
+            elif args.controller == "sta":
+                from PathTracking.controller_sta_basic import ControllerSTABasic as Controller
+                controller = Controller(model=simulator.model)
             else:
                 raise NameError("Unknown controller!!")
         elif args.simulator == "diff_drive":
@@ -178,6 +184,12 @@ def setup_simulator_and_controller(args):
                 controller = Controller(model=simulator.model)
             elif args.controller == "lqr":
                 from PathTracking.controller_lqr_basic import ControllerLQRBasic as Controller
+                controller = Controller(model=simulator.model)
+            elif args.controller == "smc":
+                from PathTracking.controller_smc_basic import ControllerSMCBasic as Controller
+                controller = Controller(model=simulator.model)
+            elif args.controller == "sta":
+                from PathTracking.controller_sta_basic import ControllerSTABasic as Controller
                 controller = Controller(model=simulator.model)
             else:
                 raise NameError("Unknown controller!!")
@@ -198,6 +210,12 @@ def setup_simulator_and_controller(args):
             elif args.controller == "lqr":
                 from PathTracking.controller_lqr_bicycle import ControllerLQRBicycle as Controller
                 controller = Controller(model=simulator.model, control_state=args.lqr_control_state)
+            elif args.controller == "smc":
+                from PathTracking.controller_smc_bicycle import ControllerSMCBicycle as Controller
+                controller = Controller(model=simulator.model)
+            elif args.controller == "sta":
+                from PathTracking.controller_sta_bicycle import ControllerSTABicycle as Controller
+                controller = Controller(model=simulator.model)
             else:
                 raise NameError("Unknown controller!!")
         else:
