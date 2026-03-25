@@ -64,7 +64,7 @@ class ControllerSTABicycle(Controller):
             return 0.0
 
         min_idx, _ = utils.search_nearest_local(
-            self.path, (x, y), self.current_idx, lookahead=100
+            self.path, (x, y), self.current_idx, lookahead=50
         )
         self.current_idx = min_idx
         target = self.path[min_idx].copy()
@@ -98,6 +98,8 @@ class ControllerSTABicycle(Controller):
         self.u1 += -self.alpha * np.sign(s) * self.dt
         # 限幅防止 windup（u1 最大提供與 beta 相當的額外修正量）
         self.u1 = np.clip(self.u1, -self.beta, self.beta)
+        # 緩慢衰減：防止 u1 在彎道大量累積後，出彎時帶著錯誤偏差繼續修正
+        self.u1 *= 0.98
 
         # 合成並轉換為角度
         delta_rad = delta_eq + delta_sw
