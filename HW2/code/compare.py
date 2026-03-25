@@ -262,7 +262,7 @@ def main():
                 cte, idx = nearest_cte(path, x, y)
                 a["cte_hist"].append(cte)
                 # 最近路徑點進入最後 1% → 視為到達終點，停止計算
-                if idx >= len(path) - len(path) // 100:
+                if idx >= len(path) - len(path) // 1000:
                     a["finished"] = True
 
         # 繪製
