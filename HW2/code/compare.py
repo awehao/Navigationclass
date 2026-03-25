@@ -136,9 +136,22 @@ def step_agent(agent):
     agent["traj"].append((s.x, s.y))
 
 def nearest_cte(path, x, y):
+    # 找最近路徑點索引（與 navigation.py 相同：路徑座標已是公尺，不需換算）
     d = np.sqrt((path[:,0]-x)**2 + (path[:,1]-y)**2)
     idx = int(d.argmin())
-    return float(d[idx]) / _render_scale, idx  # 除以 render_scale 轉換為公尺
+    # 用線段垂直距離（cross product），與 navigation_utils.evaluate_and_draw_metrics 一致
+    if idx < len(path) - 1:
+        p0, p1 = path[idx, :2], path[idx+1, :2]
+    else:
+        p0, p1 = path[idx-1, :2], path[idx, :2]
+    vec_path = p1 - p0
+    vec_car  = np.array([x, y]) - p0
+    path_len = np.linalg.norm(vec_path)
+    if path_len > 1e-5:
+        cte = abs(vec_path[0]*vec_car[1] - vec_path[1]*vec_car[0]) / path_len
+    else:
+        cte = float(d[idx])
+    return cte, idx
 
 # ──────────────────────────────────────────────
 # 繪製 minimap
