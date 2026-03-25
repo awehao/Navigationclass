@@ -221,10 +221,10 @@ def main():
     parser.add_argument("-c", "--controllers", nargs="+",
                         default=["smc", "sta"],
                         choices=['pid','pure_pursuit','stanley','lqr_sa','lqr_sav','smc','sta'],
-                        help="最多 5 個控制器，例如：-c smc sta lqr_sa lqr_sav")
+                        help="最多 7 個控制器，例如：-c pid pure_pursuit stanley lqr_sa lqr_sav smc sta")
     args = parser.parse_args()
 
-    ctrl_names = args.controllers[:5]   # 最多 5 個
+    ctrl_names = args.controllers[:7]   # 最多 7 個
     print(f"賽道：{args.track}  |  控制器：{ctrl_names}")
 
     way_points, path = load_track(args.track)
