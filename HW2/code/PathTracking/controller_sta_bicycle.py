@@ -50,7 +50,7 @@ class ControllerSTABicycle(Controller):
             print("No path !!")
             return None
 
-        x, y, yaw, _, _ = info["x"], info["y"], info["yaw"], info["delta"], info["v"]
+        x, y, yaw, _, v = info["x"], info["y"], info["yaw"], info["delta"], info["v"]
         yaw = utils.angle_norm(yaw)
 
         if self.current_idx >= len(self.path) - 3:
@@ -58,7 +58,7 @@ class ControllerSTABicycle(Controller):
             return 0.0
 
         min_idx, _ = utils.search_nearest_local(
-            self.path, (x, y), self.current_idx, lookahead=50
+            self.path, (x, y), self.current_idx, lookahead=100
         )
         self.current_idx = min_idx
         target = self.path[min_idx].copy()
@@ -83,12 +83,14 @@ class ControllerSTABicycle(Controller):
         delta_eq = self.l * (kappa + self.lambda_ * np.sin(theta_e))
 
         # Super Twisting 切換控制
-        # -β * √|s| * sign(s)：平方根項，大誤差快速收斂，小誤差平滑
-        # u1：積分項，消除穩態誤差且確保輸出連續（無抖振）
-        delta_sw = -self.beta * np.sqrt(abs(s)) * np.sign(s) + self.u1
+        # -β/v * √|s| * sign(s)：速度越快切換量越小，避免高速時抖振放大
+        v_safe = max(abs(v), 1.0)
+        delta_sw = -(self.beta / v_safe) * np.sqrt(abs(s)) * np.sign(s) + self.u1
 
-        # 更新積分項 u̇1 = -α * sign(s)
-        self.u1 += -self.alpha * np.sign(s) * self.dt
+        # 更新積分項：改用 tanh 軟化 sign(s)，避免 s≈0 時符號頻繁跳動造成抖振
+        self.u1 += -self.alpha * np.tanh(s / 0.1) * self.dt
+        # 限幅防止積分累積過大（windup）
+        self.u1 = np.clip(self.u1, -0.5, 0.5)
 
         # 合成並轉換為角度
         delta_rad = delta_eq + delta_sw
