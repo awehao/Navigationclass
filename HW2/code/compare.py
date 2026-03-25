@@ -1,33 +1,80 @@
 """
-compare.py - 同時跑兩個控制器並排比較
-用法：python compare.py -t 400mRunningTrack
-      python compare.py -t Silverstone -c1 smc -c2 sta
+compare.py - 同時跑最多 5 個控制器並排比較
+用法：python compare.py -t 400mRunningTrack -c smc sta pid pure_pursuit stanley
+      python compare.py -t Silverstone -c smc sta
 """
 import argparse
 import numpy as np
 import cv2
 from Simulation.utils import ControlState
 from trajectory_generator import natural_cubic_spline, adaptive_sampling, generate_speed_profile
-from navigation_utils import pos_int
 
 # ──────────────────────────────────────────────
-# 控制器顏色設定（BGR）
+# 各控制器顏色（BGR）
 # ──────────────────────────────────────────────
 COLOR = {
-    "pid":          (200,  50,  50),
-    "pure_pursuit": ( 50, 200,  50),
-    "stanley":      ( 50,  50, 200),
-    "lqr":          (200, 150,   0),
-    "smc":          (  0, 180, 255),   # 橘
-    "sta":          (180,   0, 255),   # 紫
+    "pid":          ( 50, 200,  50),   # 綠
+    "pure_pursuit": (200, 200,   0),   # 青
+    "stanley":      ( 50,  50, 220),   # 藍
+    "lqr":          (  0, 165, 255),   # 橘
+    "smc":          (  0, 200, 200),   # 黃
+    "sta":          (200,   0, 200),   # 紫
 }
 
-def build_simulator_and_controllers(ctrl_name, track_data):
+_render_scale = 1.0
+
+# ──────────────────────────────────────────────
+# 載入賽道
+# ──────────────────────────────────────────────
+def load_track(track_name, map_w=2000, map_h=2000):
+    global _render_scale
+    data = np.loadtxt(f"tracks/{track_name}.csv", delimiter=',', skiprows=1)
+    raw_x, raw_y = data[:,0], data[:,1]
+
+    tw = max(1e-5, raw_x.max() - raw_x.min())
+    th = max(1e-5, raw_y.max() - raw_y.min())
+    _render_scale = min((map_w - 100) / tw, (map_h - 100) / th)
+
+    cx = (raw_x.max() + raw_x.min()) / 2
+    cy = (raw_y.max() + raw_y.min()) / 2
+    sx = (raw_x - cx) + (map_w/2) / _render_scale
+    sy = (raw_y - cy) + (map_h/2) / _render_scale
+
+    t = np.linspace(0, 1, len(sx))
+    t_path = np.linspace(0, 1, 2000)
+    path_x = natural_cubic_spline(t, sx, t_path)
+    path_y = natural_cubic_spline(t, sy, t_path)
+
+    v_ref, k = generate_speed_profile(path_x, path_y, max_v=85.0,
+                                       max_lat_acc=30, max_long_acc=12, max_long_dec=18)
+    wp_x, wp_y, wp_v = adaptive_sampling(path_x, path_y, k, v_ref=v_ref,
+                                          min_ds=2.0, max_ds=10.0, k_gain=200.0)
+
+    wp_yaw = np.zeros_like(wp_x)
+    for i in range(len(wp_x)-1):
+        wp_yaw[i] = np.rad2deg(np.arctan2(wp_y[i+1]-wp_y[i], wp_x[i+1]-wp_x[i]))
+    wp_yaw[-1] = wp_yaw[-2]
+
+    path_yaw = np.zeros_like(path_x)
+    for i in range(len(path_x)-1):
+        path_yaw[i] = np.rad2deg(np.arctan2(path_y[i+1]-path_y[i], path_x[i+1]-path_x[i]))
+    path_yaw[-1] = path_yaw[-2]
+
+    wp_k = np.zeros_like(wp_x)
+    w_pts = np.vstack((wp_x, wp_y, wp_yaw, wp_k, wp_v)).T
+    p     = np.vstack((path_x, path_y, path_yaw, k, v_ref)).T
+    return w_pts, p
+
+# ──────────────────────────────────────────────
+# 建立單一控制器組合
+# ──────────────────────────────────────────────
+def build_agent(ctrl_name, way_points):
     from Simulation.simulator_bicycle import SimulatorBicycle
     from PathTracking.long_controller_pid import PIDLongController
 
     sim = SimulatorBicycle()
-    long_ctrl = PIDLongController(model=sim.model, a_range=sim.a_range)
+    sim.render_scale = _render_scale
+    lc = PIDLongController(model=sim.model, a_range=sim.a_range)
 
     if ctrl_name == "pid":
         from PathTracking.controller_pid_bicycle import ControllerPIDBicycle as C
@@ -50,219 +97,168 @@ def build_simulator_and_controllers(ctrl_name, track_data):
     else:
         raise ValueError(f"未知控制器：{ctrl_name}")
 
-    way_points, path = track_data
-    sim.render_scale = _render_scale  # 共用 render_scale
     ctrl.set_path(way_points)
-    long_ctrl.set_path(way_points)
-    return sim, ctrl, long_ctrl
+    lc.set_path(way_points)
+    return {"sim": sim, "ctrl": ctrl, "lc": lc,
+            "cmd": ControlState("bicycle", None, None),
+            "traj": [], "cte_hist": []}
+
+def reset_agent(agent, way_points, start_pose):
+    agent["sim"].init_pose(start_pose)
+    agent["ctrl"].set_path(way_points)
+    agent["lc"].set_path(way_points)
+    agent["cmd"] = ControlState("bicycle", None, None)
+    agent["traj"].clear()
+    agent["cte_hist"].clear()
 
 # ──────────────────────────────────────────────
-# 軌跡紀錄與 minimap 繪製
+# 單步執行
 # ──────────────────────────────────────────────
-def draw_minimap(path, way_points, traj1, traj2, name1, name2, color1, color2, cte1, cte2, map_w=400, map_h=250):
-    mm = np.ones((map_h, map_w, 3), dtype=np.uint8) * 30  # 深色背景
-
-    # 計算路徑 bounding box 用於縮放
-    all_x = path[:, 0]
-    all_y = path[:, 1]
-    x_min, x_max = all_x.min(), all_x.max()
-    y_min, y_max = all_y.min(), all_y.max()
-    pad = 20
-
-    def world2mm(wx, wy):
-        px = int((wx - x_min) / (x_max - x_min + 1e-6) * (map_w - 2*pad) + pad)
-        py = int((wy - y_min) / (y_max - y_min + 1e-6) * (map_h - 2*pad) + pad)
-        return px, py
-
-    # 畫參考路徑（灰）
-    for i in range(len(path) - 1):
-        cv2.line(mm, world2mm(path[i,0], path[i,1]),
-                     world2mm(path[i+1,0], path[i+1,1]), (80,80,80), 1)
-
-    # 畫兩條軌跡
-    for traj, color in [(traj1, color1), (traj2, color2)]:
-        for i in range(1, len(traj)):
-            cv2.line(mm, world2mm(*traj[i-1]), world2mm(*traj[i]), color, 2)
-
-    # 畫目前位置（圓點）
-    if traj1:
-        cv2.circle(mm, world2mm(*traj1[-1]), 5, color1, -1)
-    if traj2:
-        cv2.circle(mm, world2mm(*traj2[-1]), 5, color2, -1)
-
-    # 圖例與 CTE
-    cv2.putText(mm, f"{name1}  AvgCTE:{cte1:.2f}", (5, 15),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, color1, 1)
-    cv2.putText(mm, f"{name2}  AvgCTE:{cte2:.2f}", (5, 32),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, color2, 1)
-    cv2.putText(mm, "r:reset  ESC:quit", (5, map_h-8),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.38, (150,150,150), 1)
-    return mm
+def step_agent(agent):
+    sim, ctrl, lc = agent["sim"], agent["ctrl"], agent["lc"]
+    sim.step(agent["cmd"])
+    s = sim.state
+    info = {"x": s.x, "y": s.y, "yaw": s.yaw,
+            "v": s.v, "delta": sim.cstate.delta}
+    next_a, _ = lc.feedback(info)
+    info["v"] += next_a * sim.model.dt
+    next_delta = ctrl.feedback(info)
+    agent["cmd"] = ControlState("bicycle", next_a, next_delta)
+    agent["traj"].append((s.x, s.y))
 
 def nearest_cte(path, x, y):
-    dists = np.sqrt((path[:,0]-x)**2 + (path[:,1]-y)**2)
-    return float(dists.min())
+    d = np.sqrt((path[:,0]-x)**2 + (path[:,1]-y)**2)
+    return float(d.min())
 
-def load_track(track_name, map_w=2000, map_h=2000):
-    global _render_scale
-    filename = f"tracks/{track_name}.csv"
-    data = np.loadtxt(filename, delimiter=',', skiprows=1)
-    raw_x, raw_y = data[:,0], data[:,1]
+# ──────────────────────────────────────────────
+# 繪製 minimap
+# ──────────────────────────────────────────────
+def draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400):
+    mm = np.ones((mm_h, mm_w, 3), dtype=np.uint8) * 25
+    pad = 25
 
-    margin = 5
-    tw = max(1e-5, raw_x.max() - raw_x.min())
-    th = max(1e-5, raw_y.max() - raw_y.min())
-    sx = (map_w - 2*margin*10) / tw
-    sy = (map_h - 2*margin*10) / th
-    _render_scale = min(sx, sy)
+    x_min, x_max = path[:,0].min(), path[:,0].max()
+    y_min, y_max = path[:,1].min(), path[:,1].max()
 
-    cx = (raw_x.max() + raw_x.min()) / 2
-    cy = (raw_y.max() + raw_y.min()) / 2
-    scaled_x = (raw_x - cx) + (map_w/2) / _render_scale
-    scaled_y = (raw_y - cy) + (map_h/2) / _render_scale
+    def w2m(wx, wy):
+        px = int((wx - x_min) / (x_max - x_min + 1e-6) * (mm_w - 2*pad) + pad)
+        py = int((wy - y_min) / (y_max - y_min + 1e-6) * (mm_h - 2*pad) + pad)
+        return (px, py)
 
-    t_anchors = np.linspace(0, 1, len(scaled_x))
-    t_path = np.linspace(0, 1, 2000)
-    path_x = natural_cubic_spline(t_anchors, scaled_x, t_path)
-    path_y = natural_cubic_spline(t_anchors, scaled_y, t_path)
+    # 參考路徑
+    for i in range(len(path)-1):
+        cv2.line(mm, w2m(path[i,0], path[i,1]),
+                     w2m(path[i+1,0], path[i+1,1]), (70,70,70), 1)
 
-    v_ref, k = generate_speed_profile(path_x, path_y, max_v=85.0,
-                                       max_lat_acc=30, max_long_acc=12, max_long_dec=18)
-    wp_x, wp_y, wp_v = adaptive_sampling(path_x, path_y, k, v_ref=v_ref,
-                                          min_ds=2.0, max_ds=10.0, k_gain=200.0)
+    # 各控制器軌跡
+    for name, agent in zip(ctrl_names, agents):
+        color = COLOR[name]
+        traj = agent["traj"]
+        for i in range(1, len(traj)):
+            cv2.line(mm, w2m(*traj[i-1]), w2m(*traj[i]), color, 2)
+        if traj:
+            cv2.circle(mm, w2m(*traj[-1]), 6, color, -1)
 
-    wp_yaw = np.zeros_like(wp_x)
-    for i in range(len(wp_x)-1):
-        wp_yaw[i] = np.rad2deg(np.arctan2(wp_y[i+1]-wp_y[i], wp_x[i+1]-wp_x[i]))
-    wp_yaw[-1] = wp_yaw[-2]
+    # 圖例
+    for i, (name, agent) in enumerate(zip(ctrl_names, agents)):
+        avg = np.mean(agent["cte_hist"]) if agent["cte_hist"] else 0.0
+        cv2.putText(mm, f"{name}: {avg:.2f}px", (8, 18 + i*18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, COLOR[name], 1)
 
-    path_yaw = np.zeros_like(path_x)
-    for i in range(len(path_x)-1):
-        path_yaw[i] = np.rad2deg(np.arctan2(path_y[i+1]-path_y[i], path_x[i+1]-path_x[i]))
-    path_yaw[-1] = path_yaw[-2]
+    cv2.putText(mm, "r:reset  ESC:quit", (8, mm_h-8),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120,120,120), 1)
+    return mm
 
-    wp_k = np.zeros_like(wp_x)
-    w_pts = np.vstack((wp_x, wp_y, wp_yaw, wp_k, wp_v)).T
-    p = np.vstack((path_x, path_y, path_yaw, k, v_ref)).T
-    return w_pts, p
+# ──────────────────────────────────────────────
+# 即時 CTE 柱狀面板
+# ──────────────────────────────────────────────
+def draw_bar_panel(agents, ctrl_names, panel_w=300, panel_h=400):
+    panel = np.ones((panel_h, panel_w, 3), dtype=np.uint8) * 20
+    n = len(ctrl_names)
+    avgs = [np.mean(a["cte_hist"]) if a["cte_hist"] else 0.0 for a in agents]
+    max_cte = max(max(avgs), 1.0)
 
-_render_scale = 1.0
+    bar_area_h = panel_h - 80
+    bar_w = max(20, (panel_w - 20) // n - 10)
+    spacing = (panel_w - 20) // n
 
-def step_one(sim, ctrl, long_ctrl, cmd):
-    """執行一步模擬，回傳新指令"""
-    sim.step(cmd)
-    state = sim.state
-    info = {"x": state.x, "y": state.y, "yaw": state.yaw,
-            "v": state.v, "delta": sim.cstate.delta}
-    next_a, _ = long_ctrl.feedback(info)
-    info["v"] = info["v"] + next_a * sim.model.dt
-    next_delta = ctrl.feedback(info)
-    return ControlState("bicycle", next_a, next_delta)
+    cv2.putText(panel, "Avg CTE (px)", (panel_w//2 - 60, 22),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200,200,200), 1)
 
+    for i, (name, avg) in enumerate(zip(ctrl_names, avgs)):
+        color = COLOR[name]
+        bh = int(avg / max_cte * bar_area_h)
+        x0 = 10 + i * spacing
+        y_base = panel_h - 45
+        cv2.rectangle(panel, (x0, y_base - bh), (x0 + bar_w, y_base), color, -1)
+        cv2.putText(panel, f"{avg:.1f}", (x0, y_base + 14),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
+        # 短名
+        short = name[:3]
+        cv2.putText(panel, short, (x0, panel_h - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
+
+    return panel
+
+# ──────────────────────────────────────────────
+# 主程式
+# ──────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--track", default="400mRunningTrack",
                         choices=['400mRunningTrack','1000mStraight','Silverstone','Suzuka','Monza'])
-    parser.add_argument("-c1", "--ctrl1", default="smc",
-                        choices=['pid','pure_pursuit','stanley','lqr','smc','sta'])
-    parser.add_argument("-c2", "--ctrl2", default="sta",
-                        choices=['pid','pure_pursuit','stanley','lqr','smc','sta'])
+    parser.add_argument("-c", "--controllers", nargs="+",
+                        default=["smc", "sta"],
+                        choices=['pid','pure_pursuit','stanley','lqr','smc','sta'],
+                        help="最多 5 個控制器，例如：-c smc sta pid")
     args = parser.parse_args()
 
-    print(f"載入賽道：{args.track}")
-    track_data = load_track(args.track)
-    way_points, path = track_data
+    ctrl_names = args.controllers[:5]   # 最多 5 個
+    print(f"賽道：{args.track}  |  控制器：{ctrl_names}")
 
-    # 建立兩組模擬器
-    sim1, ctrl1, lc1 = build_simulator_and_controllers(args.ctrl1, track_data)
-    sim2, ctrl2, lc2 = build_simulator_and_controllers(args.ctrl2, track_data)
+    way_points, path = load_track(args.track)
 
     # 起始位姿
     start_yaw = np.rad2deg(np.arctan2(path[1,1]-path[0,1], path[1,0]-path[0,0]))
     start_pose = (path[0,0], path[0,1], start_yaw)
-    sim1.init_pose(start_pose)
-    sim2.init_pose(start_pose)
 
-    cmd1 = ControlState("bicycle", None, None)
-    cmd2 = ControlState("bicycle", None, None)
-
-    traj1, traj2 = [], []
-    cte_hist1, cte_hist2 = [], []
-
-    color1 = COLOR[args.ctrl1]
-    color2 = COLOR[args.ctrl2]
+    # 建立所有 agent
+    agents = [build_agent(name, way_points) for name in ctrl_names]
+    for a in agents:
+        a["sim"].init_pose(start_pose)
 
     cv2.namedWindow("Compare", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Compare", 900, 300)
+    cv2.resizeWindow("Compare", 1000, 400)
 
     while True:
-        # 步進兩個模擬器
-        cmd1 = step_one(sim1, ctrl1, lc1, cmd1)
-        cmd2 = step_one(sim2, ctrl2, lc2, cmd2)
+        # 所有 agent 同步步進
+        for a in agents:
+            step_agent(a)
+            if a["traj"]:
+                x, y = a["traj"][-1]
+                a["cte_hist"].append(nearest_cte(path, x, y))
 
-        # 記錄軌跡
-        traj1.append((sim1.state.x, sim1.state.y))
-        traj2.append((sim2.state.x, sim2.state.y))
+        # 繪製
+        mm    = draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400)
+        panel = draw_bar_panel(agents, ctrl_names, panel_w=300, panel_h=400)
+        view  = np.hstack((mm, panel))
 
-        # 計算 CTE
-        cte_hist1.append(nearest_cte(path, sim1.state.x, sim1.state.y))
-        cte_hist2.append(nearest_cte(path, sim2.state.x, sim2.state.y))
-
-        avg_cte1 = float(np.mean(cte_hist1)) if cte_hist1 else 0.0
-        avg_cte2 = float(np.mean(cte_hist2)) if cte_hist2 else 0.0
-
-        # 繪製 minimap（左）和即時 CTE 柱狀（右）
-        mm = draw_minimap(path, way_points,
-                          traj1, traj2,
-                          args.ctrl1, args.ctrl2,
-                          color1, color2,
-                          avg_cte1, avg_cte2,
-                          map_w=600, map_h=300)
-
-        # 即時 CTE 數字面板（右側）
-        panel = np.ones((300, 300, 3), dtype=np.uint8) * 20
-        cv2.putText(panel, "Avg CTE", (80, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200,200,200), 2)
-
-        # 柱狀圖
-        max_cte = max(avg_cte1, avg_cte2, 1.0)
-        bar_max_h = 180
-        bar_w = 80
-
-        b1_h = int(avg_cte1 / max_cte * bar_max_h)
-        b2_h = int(avg_cte2 / max_cte * bar_max_h)
-
-        cv2.rectangle(panel, (40, 240-b1_h), (40+bar_w, 240), color1, -1)
-        cv2.rectangle(panel, (170, 240-b2_h), (170+bar_w, 240), color2, -1)
-
-        cv2.putText(panel, f"{avg_cte1:.2f}", (40, 260),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color1, 1)
-        cv2.putText(panel, f"{avg_cte2:.2f}", (170, 260),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color2, 1)
-        cv2.putText(panel, args.ctrl1, (40, 285),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color1, 1)
-        cv2.putText(panel, args.ctrl2, (170, 285),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color2, 1)
-
-        view = np.hstack((mm, panel))
         cv2.imshow("Compare", view)
-
         k = cv2.waitKey(1)
+
         if k == ord('r'):
-            # 重置兩組模擬
-            sim1.init_pose(start_pose); sim2.init_pose(start_pose)
-            ctrl1.set_path(way_points); ctrl2.set_path(way_points)
-            lc1.set_path(way_points);  lc2.set_path(way_points)
-            cmd1 = ControlState("bicycle", None, None)
-            cmd2 = ControlState("bicycle", None, None)
-            traj1.clear(); traj2.clear()
-            cte_hist1.clear(); cte_hist2.clear()
+            for a in agents:
+                reset_agent(a, way_points, start_pose)
         elif k == 27:
             break
 
     cv2.destroyAllWindows()
-    print(f"\n最終結果：")
-    print(f"  {args.ctrl1:15s} Avg CTE = {np.mean(cte_hist1):.3f} px")
-    print(f"  {args.ctrl2:15s} Avg CTE = {np.mean(cte_hist2):.3f} px")
+
+    # 最終排名
+    print("\n─── 最終結果 ───")
+    results = [(name, np.mean(a["cte_hist"])) for name, a in zip(ctrl_names, agents) if a["cte_hist"]]
+    for rank, (name, cte) in enumerate(sorted(results, key=lambda x: x[1]), 1):
+        print(f"  #{rank}  {name:15s}  Avg CTE = {cte:.3f} px")
 
 if __name__ == "__main__":
     main()
