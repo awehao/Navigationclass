@@ -9,7 +9,7 @@ class ControllerPurePursuitBicycle(Controller):
                  # TODO 4.2.1: Tune Pure Pursuit Gain
                  # kp：前視距離的速度係數（速度越快，前看越遠，高速時更平穩）
                  # Lfc：最小前視距離（低速保底，避免 Ld 過小導致震盪）
-                 kp=1.5, Lfc=20):
+                 kp=0.05, Lfc=1):
         self.path = None
         self.kp = kp
         self.Lfc = Lfc
