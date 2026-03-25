@@ -267,7 +267,7 @@ def main():
     cv2.resizeWindow("Compare", 1300, 400)
 
     # 倒數 5 秒
-    for cnt in range(5, 0, -1):
+    for cnt in range(10, 0, -1):
         mm     = draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400)
         legend = draw_legend_panel(agents, ctrl_names, panel_w=320, panel_h=400)
         bar    = draw_bar_panel(agents, ctrl_names, panel_w=280, panel_h=400)

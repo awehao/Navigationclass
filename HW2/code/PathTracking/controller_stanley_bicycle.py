@@ -8,7 +8,7 @@ class ControllerStanleyBicycle(Controller):
     def __init__(self, model,
                  # TODO 4.3.1: Tune Stanley Gain
                  # kp：橫向誤差增益；速度越大，arctan 內的值越小（自然抑制高速震盪）
-                 kp=0.0000000000005):
+                 kp=0.0000000005):
         self.path = None
         self.kp = kp
         self.l = model.l
