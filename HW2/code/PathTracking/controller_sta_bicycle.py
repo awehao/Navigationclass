@@ -12,10 +12,14 @@ class ControllerSTABicycle(Controller):
     傳統 SMC 切換項：delta_sw = -k * tanh(s/phi)  → 仍有輕微抖振
     STA 改良：輸出完全連續，抖振幾乎消除，且保有有限時間收斂
 
-    STA 控制律：
+    STA 控制律（離散時間改良版）：
         delta = delta_eq + delta_sw
-        delta_sw = -β * √|s| * sign(s) + u1
-        u̇1      = -α * sign(s)         ← 積分項，跨時步累積
+        delta_sw = -β * tanh(s/φ) + u1    ← tanh 取代 √|s|*sign(s)，消除離散抖振
+        u̇1      = -α * sign(s)            ← 積分項，跨時步累積，確保有限時間收斂
+
+    注意：理論 STA 使用 √|s|*sign(s)，但在 dt=0.05 的離散系統中，
+    當 |s| 很小時 sign(s) 每步正負交替，振幅反比 |s| 更大 → 嚴重抖振。
+    改用 tanh 後輸出有界且連續，保留積分項仍具 STA 收斂特性。
 
     滑動面：s = λ * e - θ_e
         θ_e > 0（需正 delta，向左轉）→ s = -θ_e < 0 → delta_sw > 0 ✓
@@ -27,13 +31,15 @@ class ControllerSTABicycle(Controller):
         → delta_eq = l * (κ + λ * sin(θ_e))
     """
     def __init__(self, model,
-                 lambda_=0.02,  # 滑動面斜率（像素座標下需小，原 0.5 會讓 delta_eq 超過轉向角上限）
-                 alpha=0.15,    # 積分增益（越大積分項累積越快，收斂越快）
-                 beta=1.0):     # 平方根增益（決定初期收斂速度，需夠大才有修正效果）
+                 lambda_=0.5,  # 滑動面斜率（與 SMC 一致，使 s 有足夠大小讓 tanh 有效）
+                 alpha=0.03,   # 積分增益（慢速累積，避免 u1 超調）
+                 beta=0.3,     # tanh 增益（與 SMC 的 k 相同，已驗證可行）
+                 phi=0.3):     # tanh 邊界層（與 SMC 相同，控制切換平滑度）
         self.path = None
         self.lambda_ = lambda_
         self.alpha = alpha
         self.beta = beta
+        self.phi = phi
         self.dt = model.dt
         self.l = model.l
         self.u1 = 0.0           # STA 積分項（弧度，跨時步保存）
@@ -82,14 +88,16 @@ class ControllerSTABicycle(Controller):
         # 等效控制（補償已知動態）
         delta_eq = self.l * (kappa + self.lambda_ * np.sin(theta_e))
 
-        # Super Twisting 切換控制
-        # -β * √|s| * sign(s)：大誤差快速收斂，接近滑動面時自然趨近 0（抖振小）
-        delta_sw = -self.beta * np.sqrt(abs(s)) * np.sign(s) + self.u1
+        # STA 切換控制（離散改良：tanh 取代 √|s|*sign(s)）
+        # tanh(s/φ)：|s| 大時趨近 ±1（有界），|s| 小時線性（連續），徹底消除離散抖振
+        # u1 積分項：緩慢累積，補償持續性擾動，確保有限時間收斂（STA 核心特性）
+        delta_sw = -self.beta * np.tanh(s / self.phi) + self.u1
 
-        # 更新積分項：tanh 軟化避免 s≈0 時符號頻繁跳動，保持輸出連續性
-        self.u1 += -self.alpha * np.tanh(s / 0.1) * self.dt
-        # 限幅防止積分項累積過大（windup），範圍放大以確保足夠的修正能力
-        self.u1 = np.clip(self.u1, -1.0, 1.0)
+        # 更新積分項 u̇1 = -α * sign(s)
+        # sign(s) 在此處是合理的：u1 是積分，即使輸入不連續，輸出仍緩慢平滑變化
+        self.u1 += -self.alpha * np.sign(s) * self.dt
+        # 限幅防止 windup（u1 最大提供與 beta 相當的額外修正量）
+        self.u1 = np.clip(self.u1, -self.beta, self.beta)
 
         # 合成並轉換為角度
         delta_rad = delta_eq + delta_sw
