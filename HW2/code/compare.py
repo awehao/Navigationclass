@@ -101,7 +101,7 @@ def build_agent(ctrl_name, way_points):
     lc.set_path(way_points)
     return {"sim": sim, "ctrl": ctrl, "lc": lc,
             "cmd": ControlState("bicycle", None, None),
-            "traj": [], "cte_hist": []}
+            "traj": [], "cte_hist": [], "finished": False}
 
 def reset_agent(agent, way_points, start_pose):
     agent["sim"].init_pose(start_pose)
@@ -110,6 +110,7 @@ def reset_agent(agent, way_points, start_pose):
     agent["cmd"] = ControlState("bicycle", None, None)
     agent["traj"].clear()
     agent["cte_hist"].clear()
+    agent["finished"] = False
 
 # ──────────────────────────────────────────────
 # 單步執行
@@ -128,7 +129,8 @@ def step_agent(agent):
 
 def nearest_cte(path, x, y):
     d = np.sqrt((path[:,0]-x)**2 + (path[:,1]-y)**2)
-    return float(d.min())
+    idx = int(d.argmin())
+    return float(d[idx]), idx
 
 # ──────────────────────────────────────────────
 # 繪製 minimap
@@ -162,7 +164,8 @@ def draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400):
     # 圖例
     for i, (name, agent) in enumerate(zip(ctrl_names, agents)):
         avg = np.mean(agent["cte_hist"]) if agent["cte_hist"] else 0.0
-        cv2.putText(mm, f"{name}: {avg:.2f}px", (8, 18 + i*18),
+        suffix = " [DONE]" if agent["finished"] else ""
+        cv2.putText(mm, f"{name}: {avg:.2f}px{suffix}", (8, 18 + i*18),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.48, COLOR[name], 1)
 
     cv2.putText(mm, "r:reset  ESC:quit", (8, mm_h-8),
@@ -233,10 +236,16 @@ def main():
     while True:
         # 所有 agent 同步步進
         for a in agents:
+            if a["finished"]:
+                continue
             step_agent(a)
             if a["traj"]:
                 x, y = a["traj"][-1]
-                a["cte_hist"].append(nearest_cte(path, x, y))
+                cte, idx = nearest_cte(path, x, y)
+                a["cte_hist"].append(cte)
+                # 最近路徑點進入最後 1% → 視為到達終點，停止計算
+                if idx >= len(path) - len(path) // 100:
+                    a["finished"] = True
 
         # 繪製
         mm    = draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400)
