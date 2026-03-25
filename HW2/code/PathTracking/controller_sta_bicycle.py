@@ -27,9 +27,9 @@ class ControllerSTABicycle(Controller):
         → delta_eq = l * (κ + λ * sin(θ_e))
     """
     def __init__(self, model,
-                 lambda_=0.5,   # 滑動面斜率
-                 alpha=0.05,    # 積分增益（rad/s²，太大→超調，太小→收斂慢）
-                 beta=0.15):    # 平方根增益（rad，主要決定初期收斂速度）
+                 lambda_=0.02,  # 滑動面斜率（像素座標下需小，原 0.5 會讓 delta_eq 超過轉向角上限）
+                 alpha=0.15,    # 積分增益（越大積分項累積越快，收斂越快）
+                 beta=1.0):     # 平方根增益（決定初期收斂速度，需夠大才有修正效果）
         self.path = None
         self.lambda_ = lambda_
         self.alpha = alpha
@@ -50,7 +50,7 @@ class ControllerSTABicycle(Controller):
             print("No path !!")
             return None
 
-        x, y, yaw, _, v = info["x"], info["y"], info["yaw"], info["delta"], info["v"]
+        x, y, yaw, _, _ = info["x"], info["y"], info["yaw"], info["delta"], info["v"]
         yaw = utils.angle_norm(yaw)
 
         if self.current_idx >= len(self.path) - 3:
@@ -83,14 +83,13 @@ class ControllerSTABicycle(Controller):
         delta_eq = self.l * (kappa + self.lambda_ * np.sin(theta_e))
 
         # Super Twisting 切換控制
-        # -β/v * √|s| * sign(s)：速度越快切換量越小，避免高速時抖振放大
-        v_safe = max(abs(v), 1.0)
-        delta_sw = -(self.beta / v_safe) * np.sqrt(abs(s)) * np.sign(s) + self.u1
+        # -β * √|s| * sign(s)：大誤差快速收斂，接近滑動面時自然趨近 0（抖振小）
+        delta_sw = -self.beta * np.sqrt(abs(s)) * np.sign(s) + self.u1
 
-        # 更新積分項：改用 tanh 軟化 sign(s)，避免 s≈0 時符號頻繁跳動造成抖振
+        # 更新積分項：tanh 軟化避免 s≈0 時符號頻繁跳動，保持輸出連續性
         self.u1 += -self.alpha * np.tanh(s / 0.1) * self.dt
-        # 限幅防止積分累積過大（windup）
-        self.u1 = np.clip(self.u1, -0.5, 0.5)
+        # 限幅防止積分項累積過大（windup），範圍放大以確保足夠的修正能力
+        self.u1 = np.clip(self.u1, -1.0, 1.0)
 
         # 合成並轉換為角度
         delta_rad = delta_eq + delta_sw
