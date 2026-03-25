@@ -182,7 +182,7 @@ def draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400):
         v     = agent["sim"].state.v
         t     = agent["ticks"] * dt
         suffix = " [DONE]" if agent["finished"] else ""
-        label = f"{name}: {avg:.2f}m  {v:.1f}m/s  {t:.0f}s{suffix}"
+        label = f"{name}: {avg:.2f}m  {v:.1f}m/s  {t:.1f}s{suffix}"
         cv2.putText(mm, label, (8, 18 + i*18),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR[name], 1)
 
