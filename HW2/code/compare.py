@@ -175,20 +175,35 @@ def draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400):
         if traj:
             cv2.circle(mm, w2m(*traj[-1]), 6, color, -1)
 
-    # 圖例：名稱 | Avg CTE | 即時速度 | 已跑時間
-    dt = agents[0]["sim"].model.dt if agents else 0.05
-    for i, (name, agent) in enumerate(zip(ctrl_names, agents)):
-        avg   = np.mean(agent["cte_hist"]) if agent["cte_hist"] else 0.0
-        v     = agent["sim"].state.v
-        t     = agent["ticks"] * dt
-        suffix = " [DONE]" if agent["finished"] else ""
-        label = f"{name}: {avg:.2f}m  {v:.1f}m/s  {t:.1f}s{suffix}"
-        cv2.putText(mm, label, (8, 18 + i*18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR[name], 1)
-
     cv2.putText(mm, "r:reset  ESC:quit", (8, mm_h-8),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120,120,120), 1)
     return mm
+
+# ──────────────────────────────────────────────
+# 圖例面板：名稱 | Avg CTE | 即時速度 | 已跑時間
+# ──────────────────────────────────────────────
+def draw_legend_panel(agents, ctrl_names, panel_w=320, panel_h=400):
+    panel = np.ones((panel_h, panel_w, 3), dtype=np.uint8) * 18
+    dt = agents[0]["sim"].model.dt if agents else 0.05
+
+    cv2.putText(panel, "Controller  CTE    Speed   Time", (8, 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.38, (160,160,160), 1)
+    cv2.line(panel, (6, 26), (panel_w-6, 26), (60,60,60), 1)
+
+    for i, (name, agent) in enumerate(zip(ctrl_names, agents)):
+        avg    = np.mean(agent["cte_hist"]) if agent["cte_hist"] else 0.0
+        v      = agent["sim"].state.v
+        t      = agent["ticks"] * dt
+        suffix = " [DONE]" if agent["finished"] else ""
+        line1  = f"{name}{suffix}"
+        line2  = f"  {avg:.3f}m  {v:.1f}m/s  {t:.1f}s"
+        y0 = 46 + i * 48
+        cv2.putText(panel, line1, (8, y0),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, COLOR[name], 1)
+        cv2.putText(panel, line2, (8, y0 + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR[name], 1)
+
+    return panel
 
 # ──────────────────────────────────────────────
 # 即時 CTE 柱狀面板
@@ -249,7 +264,7 @@ def main():
         a["sim"].init_pose(start_pose)
 
     cv2.namedWindow("Compare", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Compare", 1000, 400)
+    cv2.resizeWindow("Compare", 1300, 400)
 
     while True:
         # 所有 agent 同步步進
@@ -262,13 +277,14 @@ def main():
                 cte, idx = nearest_cte(path, x, y)
                 a["cte_hist"].append(cte)
                 # 最近路徑點進入最後 1% → 視為到達終點，停止計算
-                if idx >= len(path) - len(path) // 1000:
+                if idx >= len(path) - len(path) // 500:
                     a["finished"] = True
 
         # 繪製
-        mm    = draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400)
-        panel = draw_bar_panel(agents, ctrl_names, panel_w=300, panel_h=400)
-        view  = np.hstack((mm, panel))
+        mm     = draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400)
+        legend = draw_legend_panel(agents, ctrl_names, panel_w=320, panel_h=400)
+        bar    = draw_bar_panel(agents, ctrl_names, panel_w=280, panel_h=400)
+        view   = np.hstack((mm, legend, bar))
 
         cv2.imshow("Compare", view)
         k = cv2.waitKey(1)
