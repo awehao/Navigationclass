@@ -2,6 +2,10 @@
 compare.py - 同時跑最多 5 個控制器並排比較
 用法：python compare.py -t 400mRunningTrack -c smc sta pid pure_pursuit stanley
       python compare.py -t Silverstone -c smc sta
+      python compare.py -t 400mRunningTrack -c lqr_sa lqr_sav smc
+控制器名稱：pid, pure_pursuit, stanley, lqr_sa, lqr_sav, smc, sta
+  lqr_sa  = LQR (steering_angle)
+  lqr_sav = LQR (steering_angular_velocity)
 """
 import argparse
 import numpy as np
@@ -16,7 +20,8 @@ COLOR = {
     "pid":          ( 50, 200,  50),   # 綠
     "pure_pursuit": (200, 200,   0),   # 青
     "stanley":      ( 50,  50, 220),   # 藍
-    "lqr":          (  0, 165, 255),   # 橘
+    "lqr_sa":       (  0, 165, 255),   # 橘（steering_angle）
+    "lqr_sav":      (  0, 100, 200),   # 深橘（steering_angular_velocity）
     "smc":          (  0, 200, 200),   # 黃
     "sta":          (200,   0, 200),   # 紫
 }
@@ -85,9 +90,12 @@ def build_agent(ctrl_name, way_points):
     elif ctrl_name == "stanley":
         from PathTracking.controller_stanley_bicycle import ControllerStanleyBicycle as C
         ctrl = C(model=sim.model)
-    elif ctrl_name == "lqr":
+    elif ctrl_name == "lqr_sa":
         from PathTracking.controller_lqr_bicycle import ControllerLQRBicycle as C
-        ctrl = C(model=sim.model)
+        ctrl = C(model=sim.model, control_state="steering_angle")
+    elif ctrl_name == "lqr_sav":
+        from PathTracking.controller_lqr_bicycle import ControllerLQRBicycle as C
+        ctrl = C(model=sim.model, control_state="steering_angular_velocity")
     elif ctrl_name == "smc":
         from PathTracking.controller_smc_bicycle import ControllerSMCBicycle as C
         ctrl = C(model=sim.model)
@@ -212,8 +220,8 @@ def main():
                         choices=['400mRunningTrack','1000mStraight','Silverstone','Suzuka','Monza'])
     parser.add_argument("-c", "--controllers", nargs="+",
                         default=["smc", "sta"],
-                        choices=['pid','pure_pursuit','stanley','lqr','smc','sta'],
-                        help="最多 5 個控制器，例如：-c smc sta pid")
+                        choices=['pid','pure_pursuit','stanley','lqr_sa','lqr_sav','smc','sta'],
+                        help="最多 5 個控制器，例如：-c smc sta lqr_sa lqr_sav")
     args = parser.parse_args()
 
     ctrl_names = args.controllers[:5]   # 最多 5 個
