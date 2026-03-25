@@ -138,7 +138,7 @@ def step_agent(agent):
 def nearest_cte(path, x, y):
     d = np.sqrt((path[:,0]-x)**2 + (path[:,1]-y)**2)
     idx = int(d.argmin())
-    return float(d[idx]), idx
+    return float(d[idx]) / _render_scale, idx  # 除以 render_scale 轉換為公尺
 
 # ──────────────────────────────────────────────
 # 繪製 minimap
@@ -173,7 +173,7 @@ def draw_minimap(path, agents, ctrl_names, mm_w=700, mm_h=400):
     for i, (name, agent) in enumerate(zip(ctrl_names, agents)):
         avg = np.mean(agent["cte_hist"]) if agent["cte_hist"] else 0.0
         suffix = " [DONE]" if agent["finished"] else ""
-        cv2.putText(mm, f"{name}: {avg:.2f}px{suffix}", (8, 18 + i*18),
+        cv2.putText(mm, f"{name}: {avg:.2f}m{suffix}", (8, 18 + i*18),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.48, COLOR[name], 1)
 
     cv2.putText(mm, "r:reset  ESC:quit", (8, mm_h-8),
@@ -193,7 +193,7 @@ def draw_bar_panel(agents, ctrl_names, panel_w=300, panel_h=400):
     bar_w = max(20, (panel_w - 20) // n - 10)
     spacing = (panel_w - 20) // n
 
-    cv2.putText(panel, "Avg CTE (px)", (panel_w//2 - 60, 22),
+    cv2.putText(panel, "Avg CTE (m)", (panel_w//2 - 60, 22),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200,200,200), 1)
 
     for i, (name, avg) in enumerate(zip(ctrl_names, avgs)):
@@ -275,7 +275,7 @@ def main():
     print("\n─── 最終結果 ───")
     results = [(name, np.mean(a["cte_hist"])) for name, a in zip(ctrl_names, agents) if a["cte_hist"]]
     for rank, (name, cte) in enumerate(sorted(results, key=lambda x: x[1]), 1):
-        print(f"  #{rank}  {name:15s}  Avg CTE = {cte:.3f} px")
+        print(f"  #{rank}  {name:15s}  Avg CTE = {cte:.3f} m")
 
 if __name__ == "__main__":
     main()
