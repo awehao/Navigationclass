@@ -5,7 +5,7 @@ import PathTracking.utils as utils
 from PathTracking.controller import Controller
 
 class PIDLongController(Controller):
-    def __init__(self, model, a_range, kp=1.5, ki=5, kd=0):
+    def __init__(self, model, a_range, kp=3, ki=3, kd=0):
         self.path = None
         self.kp = kp
         self.ki = ki
